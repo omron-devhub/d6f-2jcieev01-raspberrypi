@@ -1,5 +1,5 @@
 
-.PHONY: baro illm humi accl mmic
+.PHONY: d6f-ph0025 d6f-ph0505 d6f-ph0550 d6f-10 d6f-20 d6f-50 d6f-70
 
 cpplint_flags:=--filter=-readability/casting,-build/include_subdir
 ifeq (x$(cpplint),x)
@@ -8,35 +8,43 @@ endif
 ifeq (x$(cppcheck),x)
 cppcheck := @echo lint with cppcheck, option:
 endif
-ifeq (x$(wiringpi),x)
-wiringpi:=-lwiringPi
-endif
 
-all: baro illm humi accl mmic
+# all: d6f-ph0025 d6f-ph0505 d6f-ph0550 d6f-10 d6f-20 d6f-50 d6f-70
+all: d6f-ph0505
 
-baro: 2jcieev01-baro.c
+d6f-ph0025: d6f-ph0025.c
 	$(cpplint) $(cpplint_flags) $^
 	$(cppcheck) --enable=all $^
-	gcc $(CFLAGS) $(wiringpi) $^ -o 2jcieev01-baro
+	gcc $(CFLAGS) $^ -o $@
 
-illm: 2jcieev01-illm.c
+d6f-ph0505: d6f-ph0505.c
 	$(cpplint) $(cpplint_flags) $^
 	$(cppcheck) --enable=all $^
-	gcc $(CFLAGS) $(wiringpi) $^ -o 2jcieev01-illm
+	gcc $(CFLAGS) $^ -o $@
 
-humi: 2jcieev01-humi.c
+d6f-ph0550: d6f-ph0550.c
 	$(cpplint) $(cpplint_flags) $^
 	$(cppcheck) --enable=all $^
-	gcc $(CFLAGS) $(wiringpi) $^ -o 2jcieev01-humi
+	gcc $(CFLAGS) $^ -o $@
 
-accl: 2jcieev01-accl.c
+d6f-10: d6f-10.c
 	$(cpplint) $(cpplint_flags) $^
 	$(cppcheck) --enable=all $^
-	gcc $(CFLAGS) $(wiringpi) $^ -o 2jcieev01-accl
+	gcc $(CFLAGS) $^ -o $@
 
-mmic:
-	@echo there is no sample for MEMS Microphone,
-	@echo you can use  MEMS Microphone sensor from ALSA libraries or
-	@echo basic `arecord` program.
-	@echo please refer the README.
+d6f-20: d6f-20.c
+	$(cpplint) $(cpplint_flags) $^
+	$(cppcheck) --enable=all $^
+	gcc $(CFLAGS) $^ -o $@
+
+d6f-50: d6f-50.c
+	$(cpplint) $(cpplint_flags) $^
+	$(cppcheck) --enable=all $^
+	gcc $(CFLAGS) $^ -o $@
+
+d6f-70: d6f-70.c
+	$(cpplint) $(cpplint_flags) $^
+	$(cppcheck) --enable=all $^
+	gcc $(CFLAGS) $^ -o $@
+
 
