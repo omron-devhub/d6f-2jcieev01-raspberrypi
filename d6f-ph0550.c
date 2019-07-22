@@ -1,6 +1,6 @@
 /*
  * MIT License
- * Copyright (c) 2019, 2018 - present OMRON Corporation
+ * Copyright (c) 2019 - present OMRON Corporation
  * All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -21,18 +21,40 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
+
 /* includes */
-#include "sht30.h"
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+#include <linux/i2c-dev.h>
+#include <stdbool.h>
+
+/* defines */
+#define D6F_ADDR 0x6C  // D6F-PH I2C client address at 7bit expression
+
+uint8_t conv16_u8_h(int16_t a) {
+    return (uint8_t)(a >> 8);
+}
+
+uint8_t conv16_u8_l(int16_t a) {
+    return (uint8_t)(a & 0xFF);
+}
+
+int16_t conv8us_s16_be(uint8_t* buf) {
+    return (int16_t)(((int32_t)buf[0] << 8) + (int32_t)buf[1]);
+}
 
 #define RASPBERRY_PI_I2C    "/dev/i2c-1"
 #define I2CDEV              RASPBERRY_PI_I2C
 
-#define SHT30_STATUSMASK 0xFC1F
 
-#define conv8s_u16_be(b, n) \
-    (uint16_t)(((uint16_t)b[n] << 8) | (uint16_t)b[n + 1])
-
-
+/** <!-- i2c_write_reg16 {{{1 --> I2C write bytes with a 16bit register.
+ */
 uint32_t i2c_write_reg16(uint8_t devAddr, uint16_t regAddr,
                          uint8_t* data , uint8_t length
 ) {
@@ -74,11 +96,11 @@ uint32_t i2c_write_reg16(uint8_t devAddr, uint16_t regAddr,
     return err;
 }
 
-/** <!-- i2c_read_reg16 {{{1 --> I2C read function for bytes transfer.
+
+/** <!-- i2c_read_reg8 {{{1 --> I2C read function for bytes transfer.
  */
-uint32_t i2c_read_reg16(uint8_t devAddr, uint16_t regAddr,
-                        uint8_t *data, uint8_t length
-) {
+uint32_t i2c_read_reg8(uint8_t devAddr, uint8_t regAddr,
+                       uint8_t* data, uint8_t length) {
     int fd = open(I2CDEV, O_RDWR);
 
     if (fd < 0) {
@@ -91,8 +113,7 @@ uint32_t i2c_read_reg16(uint8_t devAddr, uint16_t regAddr,
             fprintf(stderr, "Failed to select device: %s\n", strerror(errno));
             err = 22; break;
         }
-        uint8_t buf[2] = {regAddr >> 8, regAddr & 0xFF};
-        if (write(fd, buf, 2) != 2) {
+        if (write(fd, &regAddr, 1) != 1) {
             fprintf(stderr, "Failed to write reg: %s\n", strerror(errno));
             err = 23; break;
         }
@@ -111,140 +132,57 @@ uint32_t i2c_read_reg16(uint8_t devAddr, uint16_t regAddr,
     return err;
 }
 
-static uint32_t sht30_write_verify_user_register(void);
-static uint32_t sht30_read_triggered_value(
-        uint16_t *value_T_raw,
-        uint16_t *value_RH_raw);
-static int32_t sht30_convert_temperature_value_x100(uint16_t value_raw);
-static int32_t sht30_convert_humidity_value_x100(uint16_t value_raw);
 
-/** <!-- sht30_setup {{{1 --> setup a humidity sensor.
- */
-bool sht30_setup(void) {
-    int ret = sht30_write_verify_user_register();
-    if (ret) {
-        printf("sht NG=>%d", ret);
-        return true;
-    }
-    return false;
-}
-
-/** <!-- sht30_write_verify_user_register {{{1 --> start to measurement.
- */
-static uint32_t sht30_write_verify_user_register(void) {
-    uint32_t result;
-    uint8_t read_buff[3];
-
-    /* Clear status register */
-    result = i2c_write_reg16(SHT30_SLAVE_ADDR, SHT30_CLEAR_STATUS, NULL, 0);
-    if (result) {
-        return result;
-    }
-
-    /* Read Out of status register */
-    int retry = 10;
-    uint16_t stat;
-    do {
-        result = i2c_read_reg16(SHT30_SLAVE_ADDR, SHT30_READ_STATUS,
-                                read_buff, 3);
-        delay(10);
-        stat = conv8s_u16_be(read_buff, 0);
-
-    /* Read Data Check */
-    } while ((result || (stat & SHT30_STATUSMASK) != 0) &&
-             (retry-- > 0));
-
-    if (result) {return result;}
-    if (retry <= 0) {return 0x10000 | stat;}
-
-    /* Measurement Commands for Periodic Data Acquisition Mode */
-    do {
-        result = i2c_write_reg16(SHT30_SLAVE_ADDR, SHT30_CMD_MEASURE, NULL, 0);
-        delay(5);
-
-    /* Read Data Check */
-    } while (result && (retry-- > 0));
-
-    if (result) {return 100 + result;}
-    if (retry <= 0) {return 32;}
-    return 0;
-}
-
-/** <!-- sht30_read_triggered_TRH_x100 {{{1 --> read raw digits and
- * convert them to physical values.
- */
-int32_t sht30_read_triggered_TRH_x100(int32_t *value_T, int32_t *value_RH) {
-    int32_t result;
-    uint16_t value_T_raw = 0;
-    uint16_t value_RH_raw = 0;
-
-    /* Measure the temperature value */
-    result = sht30_read_triggered_value(&value_T_raw, &value_RH_raw);
-    if (result) {
-        return result;
-    }
-
-    /* Convert the value to centidegrees Celsius */
-    *value_T = sht30_convert_temperature_value_x100(value_T_raw);
-    *value_RH = sht30_convert_humidity_value_x100(value_RH_raw);
-    return 0;
-}
-
-/** <!-- sht30_read_triggered_value {{{1 --> just read sensor raw values.
- */
-static uint32_t sht30_read_triggered_value(
-    uint16_t *value_T_raw,
-    uint16_t *value_RH_raw) {
-    uint32_t result;
-    uint8_t read_buff[6];
-
-    result = i2c_read_reg16(SHT30_SLAVE_ADDR,
-                            SHT30_READ_MEASURE, read_buff, 6);
-    if (result) {
-        return result;
-    }
-
-    *value_T_raw = conv8s_u16_be(read_buff, 0);
-    *value_RH_raw = conv8s_u16_be(read_buff, 3);
-    return 0;
-}
-
-/** <!-- sht30_convert_humidity_value_x100 {{1 --> convert raw digit to
- * physical value [x100]
- */
-static int32_t sht30_convert_humidity_value_x100(uint16_t value_raw) {
-    int32_t value_converted = 0;
-
-    /* Convert the value to centi-percent RH */
-    value_converted = (((int32_t)value_raw * 2500) >> 14);
-    return (int32_t)value_converted;
-}
-
-/** <!-- sht30_convert_temperature_value_x100 {{1 --> convert raw digit to
- * physical value [x100]
- */
-static int32_t sht30_convert_temperature_value_x100(uint16_t value_raw) {
-    int32_t value_converted = 0;
-
-    /* Convert the value to centi-degC */
-    value_converted = (((int32_t)value_raw * 4375) >> 14) - 4500;
-    return (int32_t)value_converted;
-}
-
-/** <!-- main - humidity sensor {{{1 -->
- * 1. setup sensor
- * 2. output results, format is: [%RH], [degC]
+/** <!-- main - Differential pressure sensor {{{1 -->
+ * 1. read and convert sensor.
+ * 2. output results, format is: [Pa]
  */
 int main() {
-    int32_t humi, temp;
+    i2c_write_reg16(D6F_ADDR, 0x0B00, NULL, 0);
+    delay(900);
 
-    if (sht30_setup()) {
-        return 1;
+    uint8_t send0[] = {0x40, 0x18, 0x06};
+    i2c_write_reg16(D6F_ADDR, 0x00D0, send0, 3);
+
+    delay(50);  // wait 50ms
+
+    uint8_t send1[] = {0x51, 0x2C};
+    i2c_write_reg16(D6F_ADDR, 0x00D0, send1, 2);
+
+    uint8_t rbuf[2];
+    uint32_t ret = i2c_read_reg8(D6F_ADDR, 0x07, rbuf, 2);  // read from [07h]
+    if (ret) {
+        return ret;
     }
-    delay(100);
-    int ret = sht30_read_triggered_TRH_x100(&temp, &humi);
-    printf("%5.2f, %7.1f, return code:%d\n",
-           (double)humi / 100.0, (double)temp / 100.0, ret);
+    int16_t rd_flow = conv8us_s16_be(rbuf);
+
+    float flow_rate;
+    #if defined(D6F_PH0025)
+    // calculation for 0-250[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 250 / 60000.0;
+    #elif defined(D6F_PH0505)
+    // calculation for +/-50[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 100.0 / 60000.0 - 50.0;
+    #elif defined(D6F_PH0550)
+    // calculation for +/-500[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
+    #endif
+    #if defined(D6F_10)
+    flow_rate = ((float)rd_flow - 1024.0) * 10.0 / 60000.0 - 250.0;
+    #elif defined(D6F_20)
+    flow_rate = ((float)rd_flow - 1024.0) * 20.0 / 60000.0 - 250.0;
+    #elif defined(D6F_50)
+    flow_rate = ((float)rd_flow - 1024.0) * 50.0 / 60000.0 - 250.0;
+    #elif defined(D6F_70)
+    flow_rate = ((float)rd_flow - 1024.0) * 70.0 / 60000.0 - 250.0;
+    #endif
+
+    printf("sensor output: %6.2f", flow_rate);  // print converted flow rate
+    #if defined(D6F_PH)
+    printf("[Pa]\n");
+    #else
+    printf("[L/min]\n");
+    #endif
     return 0;
 }
 // vi: ft=arduino:fdm=marker:et:sw=4:tw=80

@@ -1,6 +1,6 @@
 /*
  * MIT License
- * Copyright (c) 2019, 2018 - present OMRON Corporation
+ * Copyright (c) 2019 - present OMRON Corporation
  * All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -21,18 +21,42 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-/** @Includes ----------------------------------------------------------------*/
-#include "opt3001.h"
+
+/* includes */
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+#include <linux/i2c-dev.h>
+#include <stdbool.h>
+
+/* defines */
+#define D6F_ADDR 0x6C  // D6F-PH I2C client address at 7bit expression
+
+uint8_t conv16_u8_h(int16_t a) {
+    return (uint8_t)(a >> 8);
+}
+
+uint8_t conv16_u8_l(int16_t a) {
+    return (uint8_t)(a & 0xFF);
+}
+
+int16_t conv8us_s16_be(uint8_t* buf) {
+    return (int16_t)(((int32_t)buf[0] << 8) + (int32_t)buf[1]);
+}
 
 #define RASPBERRY_PI_I2C    "/dev/i2c-1"
 #define I2CDEV              RASPBERRY_PI_I2C
 
-#define conv8s_u16_be(b, n) \
-    (uint16_t)(((uint16_t)b[n] << 8) | (uint16_t)b[n + 1])
 
-
-uint32_t i2c_write_reg8(uint8_t devAddr, uint8_t regAddr,
-                        uint8_t* data , uint8_t length
+/** <!-- i2c_write_reg16 {{{1 --> I2C write bytes with a 16bit register.
+ */
+uint32_t i2c_write_reg16(uint8_t devAddr, uint16_t regAddr,
+                         uint8_t* data , uint8_t length
 ) {
     uint8_t buf[128];
     if (length > 127) {
@@ -40,7 +64,7 @@ uint32_t i2c_write_reg8(uint8_t devAddr, uint8_t regAddr,
         return 11;
     }
 
-    int fd = open(I2CDEV, O_RDWR);
+    int fd = open(I2CDEV , O_RDWR);
     if (fd < 0) {
         fprintf(stderr, "Failed to open device: %s\n", strerror(errno));
         return 12;
@@ -51,11 +75,12 @@ uint32_t i2c_write_reg8(uint8_t devAddr, uint8_t regAddr,
             fprintf(stderr, "Failed to select device: %s\n", strerror(errno));
             err = 13; break;
         }
-        buf[0] = regAddr;
+        buf[0] = regAddr >> 8;
+        buf[1] = regAddr & 0xFF;
         if (length > 0) {
-            memcpy(buf + 1, data, length);
+            memcpy(buf + 2, data, length);
         }
-        length += 1;
+        length += 2;
         int count = write(fd, buf, length);
         if (count < 0) {
             fprintf(stderr, "Failed to write device(%d): %s\n",
@@ -71,9 +96,11 @@ uint32_t i2c_write_reg8(uint8_t devAddr, uint8_t regAddr,
     return err;
 }
 
+
+/** <!-- i2c_read_reg8 {{{1 --> I2C read function for bytes transfer.
+ */
 uint32_t i2c_read_reg8(uint8_t devAddr, uint8_t regAddr,
-                       uint8_t *data, uint8_t length
-) {
+                       uint8_t* data, uint8_t length) {
     int fd = open(I2CDEV, O_RDWR);
 
     if (fd < 0) {
@@ -105,105 +132,57 @@ uint32_t i2c_read_reg8(uint8_t devAddr, uint8_t regAddr,
     return err;
 }
 
-static uint32_t opt3001_read_triggered_value(uint16_t *value_data);
-static uint32_t opt3001_convert_lux_value_x100(uint16_t value_raw);
 
-/** <!-- opt3001_setup {{{1 --> start measurement.
- */
-bool opt3001_setup(void) {
-    uint32_t err_code = opt3001_trigger_measurement();
-    if (err_code) {
-        printf("opt3001 ng \n");
-        return true;
-    }
-    return false;
-}
-
-/** <!-- opt3001_trigger_measurement {{{1 --> start to measurement
- */
-uint32_t opt3001_trigger_measurement(void) {
-    uint32_t err_code;
-    uint8_t wbuf[2];
-
-    wbuf[0] = OPT3001_CMD_CONFIG_MSB;
-    wbuf[1] = OPT3001_CMD_CONFIG_LSB;
-
-    err_code = i2c_write_reg8(OPT3001_SLAVE_ADDR, OPT3001_REG_CONFIG,
-            wbuf, sizeof(wbuf));
-    return err_code;
-}
-
-/** <!-- opt3001_read_data {{{1 --> read and convert the sensor value.
- */
-uint32_t opt3001_read_data(uint16_t *light_x100) {
-    uint32_t err_code = 0;
-    uint16_t value_data;
-
-    /* Measure the temperature value */
-    err_code = opt3001_read_triggered_value(&value_data);
-    if (err_code) {
-        return err_code;
-    }
-
-    *light_x100 = (uint16_t)(opt3001_convert_lux_value_x100(value_data) / 100);
-    return 0;
-}
-
-/** <!-- opt3001_read_triggered_value {{{1 --> read sensor value
- */
-static uint32_t opt3001_read_triggered_value(uint16_t *value_data) {
-    uint32_t err_code = 0;
-    uint8_t read_buff[2];
-
-    err_code = i2c_read_reg8(OPT3001_SLAVE_ADDR, OPT3001_REG_CONFIG,
-            read_buff, sizeof(read_buff));
-    if (err_code) {
-        return err_code;
-    }
-    if ((read_buff[1] & 0x80) == 0) {
-        return 2;  // sensor is working...
-    }
-
-    err_code = i2c_read_reg8(OPT3001_SLAVE_ADDR, OPT3001_REG_RESULT,
-            read_buff, sizeof(read_buff));
-    if (err_code) {
-        return 100 + err_code;
-    }
-
-    *value_data = conv8s_u16_be(read_buff, 0);
-    return 0;
-}
-
-/** <!-- opt3001_convert_lux_value_x100 {{{1 --> convert sensors
- * raw output digits to [100lx]
- */
-uint32_t opt3001_convert_lux_value_x100(uint16_t value_raw) {
-    uint32_t value_converted = 0;
-    uint32_t exp;
-    uint32_t data;
-
-    /* Convert the value to centi-percent RH */
-    exp = (value_raw >> 12) & 0x0F;
-    exp = 2 << exp;
-    data = value_raw & 0x0FFF;
-    value_converted = (uint32_t)(exp * data);
-
-    return value_converted;
-}
-
-/** <!-- main - illuminance sensor {{{1 -->
- * 1. setup sensor
- * 2. output results, format is: [lx]
+/** <!-- main - Differential pressure sensor {{{1 -->
+ * 1. read and convert sensor.
+ * 2. output results, format is: [Pa]
  */
 int main() {
-    uint16_t illm;
+    i2c_write_reg16(D6F_ADDR, 0x0B00, NULL, 0);
+    delay(900);
 
-    if (opt3001_setup()) {
-        return 1;
+    uint8_t send0[] = {0x40, 0x18, 0x06};
+    i2c_write_reg16(D6F_ADDR, 0x00D0, send0, 3);
+
+    delay(50);  // wait 50ms
+
+    uint8_t send1[] = {0x51, 0x2C};
+    i2c_write_reg16(D6F_ADDR, 0x00D0, send1, 2);
+
+    uint8_t rbuf[2];
+    uint32_t ret = i2c_read_reg8(D6F_ADDR, 0x07, rbuf, 2);  // read from [07h]
+    if (ret) {
+        return ret;
     }
-    delay(110);
-    int ret = opt3001_read_data(&illm);
-    printf("%10.2f, return code: %d\n", illm / 100.0, ret);
+    int16_t rd_flow = conv8us_s16_be(rbuf);
+
+    float flow_rate;
+    #if defined(D6F_PH0025)
+    // calculation for 0-250[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 250 / 60000.0;
+    #elif defined(D6F_PH0505)
+    // calculation for +/-50[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 100.0 / 60000.0 - 50.0;
+    #elif defined(D6F_PH0550)
+    // calculation for +/-500[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
+    #endif
+    #if defined(D6F_10)
+    flow_rate = ((float)rd_flow - 1024.0) * 10.0 / 60000.0 - 250.0;
+    #elif defined(D6F_20)
+    flow_rate = ((float)rd_flow - 1024.0) * 20.0 / 60000.0 - 250.0;
+    #elif defined(D6F_50)
+    flow_rate = ((float)rd_flow - 1024.0) * 50.0 / 60000.0 - 250.0;
+    #elif defined(D6F_70)
+    flow_rate = ((float)rd_flow - 1024.0) * 70.0 / 60000.0 - 250.0;
+    #endif
+
+    printf("sensor output: %6.2f", flow_rate);  // print converted flow rate
+    #if defined(D6F_PH)
+    printf("[Pa]\n");
+    #else
+    printf("[L/min]\n");
+    #endif
     return 0;
 }
 // vi: ft=arduino:fdm=marker:et:sw=4:tw=80

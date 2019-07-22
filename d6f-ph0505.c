@@ -168,13 +168,13 @@ int main() {
     flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
     #endif
     #if defined(D6F_10)
-    flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
+    flow_rate = ((float)rd_flow - 1024.0) * 10.0 / 60000.0 - 250.0;
     #elif defined(D6F_20)
-    flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
+    flow_rate = ((float)rd_flow - 1024.0) * 20.0 / 60000.0 - 250.0;
     #elif defined(D6F_50)
-    flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
+    flow_rate = ((float)rd_flow - 1024.0) * 50.0 / 60000.0 - 250.0;
     #elif defined(D6F_70)
-    flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
+    flow_rate = ((float)rd_flow - 1024.0) * 70.0 / 60000.0 - 250.0;
     #endif
 
     printf("sensor output: %6.2f", flow_rate);  // print converted flow rate

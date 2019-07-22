@@ -1,6 +1,6 @@
 /*
  * MIT License
- * Copyright (c) 2018 - present OMRON Corporation
+ * Copyright (c) 2019 - present OMRON Corporation
  * All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -21,9 +21,8 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#if !defined(__BARO_2SMPB02E_H__)
-#define __BARO_2SMPB02E_H__
 
+/* includes */
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -35,104 +34,155 @@
 #include <linux/i2c-dev.h>
 #include <stdbool.h>
 
-#include <wiringPi.h>
+/* defines */
+#define D6F_ADDR 0x6C  // D6F-PH I2C client address at 7bit expression
 
-/*=========================================================================
-    I2C ADDRESS/BITS
-    -----------------------------------------------------------------------*/
-    #define BARO_2SMPB02E_ADDRESS                (0x56)
-/*=========================================================================*/
+uint8_t conv16_u8_h(int16_t a) {
+    return (uint8_t)(a >> 8);
+}
 
-/*=========================================================================
-    REGISTERS
-    -----------------------------------------------------------------------*/
-    #define BARO_2SMPB02E_REGI2C_PRES_TXD2               0xF7
-    #define BARO_2SMPB02E_REGI2C_IO_SETUP                0xF5
-    #define BARO_2SMPB02E_REGI2C_CTRL_MEAS               0xF4
-    #define BARO_2SMPB02E_REGI2C_IIR                     0xF1
-    #define BARO_2SMPB02E_REGI2C_CHIP_ID                 0xD1
-    #define BARO_2SMPB02E_REGI2C_COEFS                   0xA0
+uint8_t conv16_u8_l(int16_t a) {
+    return (uint8_t)(a & 0xFF);
+}
 
-    /* Register values */
-    #define BARO_2SMPB02E_VAL_IOSETUP_STANDBY_0001MS       ((uint8_t)0x00)
-    #define BARO_2SMPB02E_VAL_IOSETUP_STANDBY_0125MS       ((uint8_t)0x20)
-    #define BARO_2SMPB02E_VAL_IOSETUP_STANDBY_0250MS       ((uint8_t)0x40)
-    #define BARO_2SMPB02E_VAL_IOSETUP_STANDBY_0500MS       ((uint8_t)0x60)
-    #define BARO_2SMPB02E_VAL_IOSETUP_STANDBY_1000MS       ((uint8_t)0x80)
-    #define BARO_2SMPB02E_VAL_IOSETUP_STANDBY_2000MS       ((uint8_t)0xA0)
-    #define BARO_2SMPB02E_VAL_IOSETUP_STANDBY_4000MS       ((uint8_t)0xC0)
-    #define BARO_2SMPB02E_VAL_IOSETUP_STANDBY_8000MS       ((uint8_t)0xE0)
+int16_t conv8us_s16_be(uint8_t* buf) {
+    return (int16_t)(((int32_t)buf[0] << 8) + (int32_t)buf[1]);
+}
 
-    #define BARO_2SMPB02E_VAL_TEMPAVERAGE_01     ((uint8_t)0x20)
-    #define BARO_2SMPB02E_VAL_TEMPAVERAGE_02     ((uint8_t)0x40)
-    #define BARO_2SMPB02E_VAL_TEMPAVERAGE_04     ((uint8_t)0x60)
+#define RASPBERRY_PI_I2C    "/dev/i2c-1"
+#define I2CDEV              RASPBERRY_PI_I2C
 
-    #define BARO_2SMPB02E_VAL_PRESAVERAGE_01    ((uint8_t)0x04)
-    #define BARO_2SMPB02E_VAL_PRESAVERAGE_02    ((uint8_t)0x08)
-    #define BARO_2SMPB02E_VAL_PRESAVERAGE_04    ((uint8_t)0x0C)
-    #define BARO_2SMPB02E_VAL_PRESAVERAGE_08    ((uint8_t)0x10)
-    #define BARO_2SMPB02E_VAL_PRESAVERAGE_16    ((uint8_t)0x14)
-    #define BARO_2SMPB02E_VAL_PRESAVERAGE_32    ((uint8_t)0x18)
 
-    #define BARO_2SMPB02E_VAL_POWERMODE_SLEEP  ((uint8_t)0x00)
-    #define BARO_2SMPB02E_VAL_POWERMODE_FORCED ((uint8_t)0x01)
-    #define BARO_2SMPB02E_VAL_POWERMODE_NORMAL ((uint8_t)0x03)
+/** <!-- i2c_write_reg16 {{{1 --> I2C write bytes with a 16bit register.
+ */
+uint32_t i2c_write_reg16(uint8_t devAddr, uint16_t regAddr,
+                         uint8_t* data , uint8_t length
+) {
+    uint8_t buf[128];
+    if (length > 127) {
+        fprintf(stderr, "Byte write count (%d) > 127\n", length);
+        return 11;
+    }
 
-    #define BARO_2SMPB02E_VAL_IIR_OFF     ((uint8_t)0x00)
-    #define BARO_2SMPB02E_VAL_IIR_02TIMES ((uint8_t)0x01)
-    #define BARO_2SMPB02E_VAL_IIR_04TIMES ((uint8_t)0x02)
-    #define BARO_2SMPB02E_VAL_IIR_08TIMES ((uint8_t)0x03)
-    #define BARO_2SMPB02E_VAL_IIR_16TIMES ((uint8_t)0x04)
-    #define BARO_2SMPB02E_VAL_IIR_32TIMES ((uint8_t)0x05)
+    int fd = open(I2CDEV , O_RDWR);
+    if (fd < 0) {
+        fprintf(stderr, "Failed to open device: %s\n", strerror(errno));
+        return 12;
+    }
+    int err = 0;
+    do {
+        if (ioctl(fd, I2C_SLAVE, devAddr) < 0) {
+            fprintf(stderr, "Failed to select device: %s\n", strerror(errno));
+            err = 13; break;
+        }
+        buf[0] = regAddr >> 8;
+        buf[1] = regAddr & 0xFF;
+        if (length > 0) {
+            memcpy(buf + 2, data, length);
+        }
+        length += 2;
+        int count = write(fd, buf, length);
+        if (count < 0) {
+            fprintf(stderr, "Failed to write device(%d): %s\n",
+                    count, strerror(errno));
+            err = 14; break;
+        } else if (count != length) {
+            fprintf(stderr, "Short write to device, expected %d, got %d\n",
+                    length, count);
+            err = 15; break;
+        }
+    } while (false);
+    close(fd);
+    return err;
+}
 
-    /* Coeff */
-    #define BARO_2SMPB02E_COEFF_S_A1   ((double)( 4.3E-04))
-    #define BARO_2SMPB02E_COEFF_A_A1   ((double)(-6.3E-03))
-    #define BARO_2SMPB02E_COEFF_S_A2   ((double)( 1.2E-10))
-    #define BARO_2SMPB02E_COEFF_A_A2   ((double)(-1.9E-11))
-    #define BARO_2SMPB02E_COEFF_S_BT1  ((double)( 9.1E-02))
-    #define BARO_2SMPB02E_COEFF_A_BT1  ((double)( 1.0E-01))
-    #define BARO_2SMPB02E_COEFF_S_BT2  ((double)( 1.2E-06))
-    #define BARO_2SMPB02E_COEFF_A_BT2  ((double)( 1.2E-08))
-    #define BARO_2SMPB02E_COEFF_S_BP1  ((double)( 1.9E-02))
-    #define BARO_2SMPB02E_COEFF_A_BP1  ((double)( 3.3E-02))
-    #define BARO_2SMPB02E_COEFF_S_B11  ((double)( 1.4E-07))
-    #define BARO_2SMPB02E_COEFF_A_B11  ((double)( 2.1E-07))
-    #define BARO_2SMPB02E_COEFF_S_BP2  ((double)( 3.5E-10))
-    #define BARO_2SMPB02E_COEFF_A_BP2  ((double)(-6.3E-10))
-    #define BARO_2SMPB02E_COEFF_S_B12  ((double)( 7.6E-13))
-    #define BARO_2SMPB02E_COEFF_A_B12  ((double)( 2.9E-13))
-    #define BARO_2SMPB02E_COEFF_S_B21  ((double)( 1.2E-14))
-    #define BARO_2SMPB02E_COEFF_A_B21  ((double)( 2.1E-15))
-    #define BARO_2SMPB02E_COEFF_S_BP3  ((double)( 7.9E-17))
-    #define BARO_2SMPB02E_COEFF_A_BP3  ((double)( 1.3E-16))
 
-    #define BARO_2SMPB02E_VAL_MEASMODE_HIGHSPEED \
-        (BARO_2SMPB02E_VAL_PRESAVERAGE_02 | BARO_2SMPB02E_VAL_TEMPAVERAGE_01)
-    #define BARO_2SMPB02E_VAL_MEASMODE_LOWPOWER \
-        (BARO_2SMPB02E_VAL_PRESAVERAGE_04 | BARO_2SMPB02E_VAL_TEMPAVERAGE_01)
-    #define BARO_2SMPB02E_VAL_MEASMODE_STANDARD \
-        (BARO_2SMPB02E_VAL_PRESAVERAGE_08 | BARO_2SMPB02E_VAL_TEMPAVERAGE_01)
-    #define BARO_2SMPB02E_VAL_MEASMODE_HIGHACCURACY \
-        (BARO_2SMPB02E_VAL_PRESAVERAGE_16 | BARO_2SMPB02E_VAL_TEMPAVERAGE_02)
-    #define BARO_2SMPB02E_VAL_MEASMODE_ULTRAHIGH \
-        (BARO_2SMPB02E_VAL_PRESAVERAGE_32 | BARO_2SMPB02E_VAL_TEMPAVERAGE_04)
-/*=========================================================================*/
+/** <!-- i2c_read_reg8 {{{1 --> I2C read function for bytes transfer.
+ */
+uint32_t i2c_read_reg8(uint8_t devAddr, uint8_t regAddr,
+                       uint8_t* data, uint8_t length) {
+    int fd = open(I2CDEV, O_RDWR);
 
-/*=========================================================================
-    CALIBRATION DATA
-    -----------------------------------------------------------------------*/
-    typedef struct baro_2smpb02e_setting {
-        /* Compensation Factor */
-        double _A0, _A1, _A2;
-        double _B00, _BT1, _BP1;
-        double _B11, _BT2, _BP2;
-        double _B12, _B21, _BP3;
-    } baro_2smpb02e_setting_t;
+    if (fd < 0) {
+        fprintf(stderr, "Failed to open device: %s\n", strerror(errno));
+        return 21;
+    }
+    int err = 0;
+    do {
+        if (ioctl(fd, I2C_SLAVE, devAddr) < 0) {
+            fprintf(stderr, "Failed to select device: %s\n", strerror(errno));
+            err = 22; break;
+        }
+        if (write(fd, &regAddr, 1) != 1) {
+            fprintf(stderr, "Failed to write reg: %s\n", strerror(errno));
+            err = 23; break;
+        }
+        int count = read(fd, data, length);
+        if (count < 0) {
+            fprintf(stderr, "Failed to read device(%d): %s\n",
+                    count, strerror(errno));
+            err = 24; break;
+        } else if (count != length) {
+            fprintf(stderr, "Short read  from device, expected %d, got %d\n",
+                    length, count);
+            err = 25; break;
+        }
+    } while (false);
+    close(fd);
+    return err;
+}
 
-bool baro_2smpb02e_output_compensation(
-        uint32_t raw_temp_val, uint32_t raw_press_val,
-        uint32_t* pres, int16_t* temp);
-int baro_2smpb02e_read(uint32_t* pres, int16_t* temp,
-                       uint32_t* dp, uint32_t* dt);
-#endif
+
+/** <!-- main - Differential pressure sensor {{{1 -->
+ * 1. read and convert sensor.
+ * 2. output results, format is: [Pa]
+ */
+int main() {
+    i2c_write_reg16(D6F_ADDR, 0x0B00, NULL, 0);
+    delay(900);
+
+    uint8_t send0[] = {0x40, 0x18, 0x06};
+    i2c_write_reg16(D6F_ADDR, 0x00D0, send0, 3);
+
+    delay(50);  // wait 50ms
+
+    uint8_t send1[] = {0x51, 0x2C};
+    i2c_write_reg16(D6F_ADDR, 0x00D0, send1, 2);
+
+    uint8_t rbuf[2];
+    uint32_t ret = i2c_read_reg8(D6F_ADDR, 0x07, rbuf, 2);  // read from [07h]
+    if (ret) {
+        return ret;
+    }
+    int16_t rd_flow = conv8us_s16_be(rbuf);
+
+    float flow_rate;
+    #if defined(D6F_PH0025)
+    // calculation for 0-250[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 250 / 60000.0;
+    #elif defined(D6F_PH0505)
+    // calculation for +/-50[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 100.0 / 60000.0 - 50.0;
+    #elif defined(D6F_PH0550)
+    // calculation for +/-500[Pa] range
+    flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
+    #endif
+    #if defined(D6F_10)
+    flow_rate = ((float)rd_flow - 1024.0) * 10.0 / 60000.0 - 250.0;
+    #elif defined(D6F_20)
+    flow_rate = ((float)rd_flow - 1024.0) * 20.0 / 60000.0 - 250.0;
+    #elif defined(D6F_50)
+    flow_rate = ((float)rd_flow - 1024.0) * 50.0 / 60000.0 - 250.0;
+    #elif defined(D6F_70)
+    flow_rate = ((float)rd_flow - 1024.0) * 70.0 / 60000.0 - 250.0;
+    #endif
+
+    printf("sensor output: %6.2f", flow_rate);  // print converted flow rate
+    #if defined(D6F_PH)
+    printf("[Pa]\n");
+    #else
+    printf("[L/min]\n");
+    #endif
+    return 0;
+}
+// vi: ft=arduino:fdm=marker:et:sw=4:tw=80
