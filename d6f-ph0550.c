@@ -157,32 +157,11 @@ int main() {
     int16_t rd_flow = conv8us_s16_be(rbuf);
 
     float flow_rate;
-    #if defined(D6F_PH0025)
-    // calculation for 0-250[Pa] range
-    flow_rate = ((float)rd_flow - 1024.0) * 250 / 60000.0;
-    #elif defined(D6F_PH0505)
-    // calculation for +/-50[Pa] range
-    flow_rate = ((float)rd_flow - 1024.0) * 100.0 / 60000.0 - 50.0;
-    #elif defined(D6F_PH0550)
     // calculation for +/-500[Pa] range
     flow_rate = ((float)rd_flow - 1024.0) * 500.0 / 60000.0 - 250.0;
-    #endif
-    #if defined(D6F_10)
-    flow_rate = ((float)rd_flow - 1024.0) * 10.0 / 60000.0 - 250.0;
-    #elif defined(D6F_20)
-    flow_rate = ((float)rd_flow - 1024.0) * 20.0 / 60000.0 - 250.0;
-    #elif defined(D6F_50)
-    flow_rate = ((float)rd_flow - 1024.0) * 50.0 / 60000.0 - 250.0;
-    #elif defined(D6F_70)
-    flow_rate = ((float)rd_flow - 1024.0) * 70.0 / 60000.0 - 250.0;
-    #endif
 
     printf("sensor output: %6.2f", flow_rate);  // print converted flow rate
-    #if defined(D6F_PH)
     printf("[Pa]\n");
-    #else
-    printf("[L/min]\n");
-    #endif
     return 0;
 }
 // vi: ft=arduino:fdm=marker:et:sw=4:tw=80
