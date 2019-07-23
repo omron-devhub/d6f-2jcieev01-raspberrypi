@@ -45,8 +45,8 @@ uint8_t conv16_u8_l(int16_t a) {
     return (uint8_t)(a & 0xFF);
 }
 
-int16_t conv8us_s16_be(uint8_t* buf) {
-    return (int16_t)(((int32_t)buf[0] << 8) + (int32_t)buf[1]);
+uint16_t conv8us_u16_be(uint8_t* buf) {
+    return (uint16_t)(((uint32_t)buf[0] << 8) | (uint32_t)buf[1]);
 }
 
 #define RASPBERRY_PI_I2C    "/dev/i2c-1"
@@ -138,6 +138,7 @@ uint32_t i2c_read_reg8(uint8_t devAddr, uint8_t regAddr,
  * 2. output results, format is: [Pa]
  */
 int main() {
+    // D6F setup: EEPROM Control <= 0x00h
     i2c_write_reg16(D6F_ADDR, 0x0B00, NULL, 0);
     delay(900);
 
@@ -154,14 +155,14 @@ int main() {
     if (ret) {
         return ret;
     }
-    int16_t rd_flow = conv8us_s16_be(rbuf);
+    uint16_t rd_flow = conv8us_u16_be(rbuf);
 
     float flow_rate;
     // 0-20[L/min] range
-    flow_rate = ((float)rd_flow - 1024.0) * 20.0 / 60000.0 - 250.0;
+    flow_rate = ((float)rd_flow - 1024.0) * 20.0 / 60000.0;
 
     printf("sensor output: %6.2f", flow_rate);  // print converted flow rate
     printf("[L/min]\n");
     return 0;
 }
-// vi: ft=arduino:fdm=marker:et:sw=4:tw=80
+// vi: ft=c:fdm=marker:et:sw=4:tw=80
