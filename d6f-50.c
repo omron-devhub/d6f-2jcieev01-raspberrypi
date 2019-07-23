@@ -33,6 +33,7 @@
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 #include <stdbool.h>
+#include <time.h>
 
 /* defines */
 #define D6F_ADDR 0x6C  // D6F-PH I2C client address at 7bit expression
@@ -47,6 +48,12 @@ uint8_t conv16_u8_l(int16_t a) {
 
 uint16_t conv8us_u16_be(uint8_t* buf) {
     return (uint16_t)(((uint32_t)buf[0] << 8) | (uint32_t)buf[1]);
+}
+
+void delay(int msec) {
+    struct timespec ts = {.tv_sec = msec / 1000,
+                          .tv_nsec = (msec % 1000) * 1000000};
+    nanosleep(&ts, NULL);
 }
 
 #define RASPBERRY_PI_I2C    "/dev/i2c-1"
