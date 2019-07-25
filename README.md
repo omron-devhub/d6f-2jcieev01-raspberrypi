@@ -29,9 +29,12 @@ sample projects output the sensor data to USB-Serial ports.
 
 
 ## DEMO
-sample output for D6F-
+sample output for D6F-10A7D
 
 ```
+sensor output:  -0.17[L/min]
+sensor output:   0.05[L/min]
+sensor output:  -0.10[L/min]
 ```
 
 
