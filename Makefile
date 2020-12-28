@@ -9,7 +9,7 @@ ifeq (x$(cppcheck),x)
 cppcheck := @echo lint with cppcheck, option:
 endif
 
-# all: d6f-ph0025 d6f-ph0505 d6f-ph0550 d6f-10 d6f-20 d6f-50 d6f-70
+# all: d6f-ph0025 d6f-ph0505 d6f-ph5050 d6f-10 d6f-20 d6f-50 d6f-70
 all: d6f-ph0505
 
 d6f-ph0025: d6f-ph0025.c
@@ -22,7 +22,7 @@ d6f-ph0505: d6f-ph0505.c
 	$(cppcheck) --enable=all $^
 	gcc $(CFLAGS) $^ -o $@
 
-d6f-ph0550: d6f-ph0550.c
+d6f-ph0550: d6f-ph5050.c
 	$(cpplint) $(cpplint_flags) $^
 	$(cppcheck) --enable=all $^
 	gcc $(CFLAGS) $^ -o $@
