@@ -21,7 +21,7 @@ sample projects output the sensor data to USB-Serial ports.
 |:----------:|:----------------------|:-----------------------|
 | d6f-ph0025 | differential pressure | Raspberry-Pi ZERO-W |
 | d6f-ph0505 | differential pressure | Raspberry-Pi ZERO-W |
-| d6f-ph0550 | differential pressure | Raspberry-Pi ZERO-W |
+| d6f-ph5050 | differential pressure | Raspberry-Pi ZERO-W |
 | d6f-10     | for Air flow          | Raspberry-Pi ZERO-W |
 | d6f-20     | for Air flow          | Raspberry-Pi ZERO-W |
 | d6f-50     | for Air flow          | Raspberry-Pi ZERO-W |
