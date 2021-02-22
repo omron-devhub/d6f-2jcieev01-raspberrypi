@@ -145,9 +145,9 @@ uint32_t i2c_read_reg8(uint8_t devAddr, uint8_t regAddr,
  * 2. output results, format is: [Pa]
  */
 int main() {
-    // 1. Initialize sensor (0Bh, 00h)
-    i2c_write_reg16(D6F_ADDR, 0x0B00, NULL, 0);
-    delay(900);
+　　// 1. Initialize sensor (0Bh, 00h)
+　　i2c_write_reg16(D6F_ADDR, 0x0B00, NULL, 0);
+　　delay(900);
 　　while(1){
 	// 2. Trigger getting data (00h, D0h, 40h, 18h, 06h)
 	uint8_t send0[] = {0x40, 0x18, 0x06};
